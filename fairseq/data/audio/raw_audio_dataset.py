@@ -102,7 +102,7 @@ class RawAudioDataset(FairseqDataset):
             else:
                 collated_sources[i] = self.crop_to_max_size(source, target_size)
 
-        input = {"source": collated_sources}
+        input = {"source": collated_sources, "fnames": [s["fname"] for s in samples]}
         if self.pad:
             input["padding_mask"] = padding_mask
         return {"id": torch.LongTensor([s["id"] for s in samples]), "net_input": input}
@@ -175,4 +175,4 @@ class FileAudioDataset(RawAudioDataset):
         wav, curr_sample_rate = sf.read(fname)
         feats = torch.from_numpy(wav).float()
         feats = self.postprocess(feats, curr_sample_rate)
-        return {"id": index, "source": feats}
+        return {"id": index, "fname": fname, "source": feats}

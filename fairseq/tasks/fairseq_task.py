@@ -410,6 +410,30 @@ class FairseqTask(object):
                   gradient
                 - logging outputs to display while training
         """
+        with torch.no_grad():
+            wav2vec2 = model.w2v_encoder.w2v_model
+            wav2vec2.eval()
+
+            padded_wavs = sample['net_input']['source']
+            padding_mask = sample['net_input']['padding_mask']            
+            repres, repres_padding_mask = wav2vec2.extract_features(padded_wavs, padding_mask, mask=False)
+            repres_lengths = [(p.int() == 0).sum() for p in repres_padding_mask]
+            repres = [r[:l] for r, l in zip(repres, repres_lengths)]
+
+            if not hasattr(self, 'wav2vec2_s3prl'):
+                setattr(self, 'wav2vec2_s3prl', torch.hub.load('s3prl/s3prl', 'wav2vec2').to(padded_wavs.device).half())
+            self.wav2vec2_s3prl.eval()
+
+            import torchaudio
+            wavs = [torchaudio.load(f)[0].view(-1).to(padded_wavs.device).half() for f in sample['net_input']['fnames']]
+            repres_s3prl = self.wav2vec2_s3prl(wavs)
+
+            from torch.nn.utils.rnn import pad_sequence
+            repres = pad_sequence(repres, batch_first=True)
+            repres_s3prl = pad_sequence(repres_s3prl, batch_first=True)
+
+            print((repres - repres_s3prl).abs().max())
+
         model.train()
         model.set_num_updates(update_num)
         with torch.autograd.profiler.record_function("forward"):
@@ -418,7 +442,9 @@ class FairseqTask(object):
             loss *= 0
         with torch.autograd.profiler.record_function("backward"):
             optimizer.backward(loss)
-        return loss, sample_size, logging_output
+        
+        loss_placeholder = torch.zeros(1, requires_grad=True)
+        return loss_placeholder, sample_size, logging_output
 
     def valid_step(self, sample, model, criterion):
         model.eval()
