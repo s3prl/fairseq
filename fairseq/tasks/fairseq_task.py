@@ -433,6 +433,7 @@ class FairseqTask(object):
             repres_s3prl = pad_sequence(repres_s3prl, batch_first=True)
 
             print((repres - repres_s3prl).abs().max())
+            torch.allclose(repres, repres_s3prl)
 
         model.train()
         model.set_num_updates(update_num)
